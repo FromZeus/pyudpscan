@@ -7,7 +7,7 @@ pyudpscan
 Description
 ~~~~~~~~~~~
 
-Simple UDP ports scanner with SOCKS5 proxy support.
+Simple UDP port scanner with SOCKS5 proxy support.
 
 Installation
 ~~~~~~~~~~~~
@@ -33,7 +33,7 @@ arguments
 ^^^^^^^^^
 * ``--hosts`` - List of target hosts/subnets/ranges separated by space
 * ``--ports`` - List of target ports separated by space
-* ``-p, --proxy`` - List of proxies which will be taken at random for every request
+* ``-p, --proxy`` - List of SOCKS5 proxies which will be taken at random for every request
 * ``-t, --timeout`` - How long to wait for reply at UDP request from target host
 * ``-r, --recheck`` - Number of recheck for every port
 * ``-i, --src-int-address`` - Address of local source interface to listen on.

@@ -61,6 +61,7 @@ class Scanner(object):
         @param proxy: Proxy address in format ip:port
         @type proxy: `str`
         """
+
         if proxy != "default":
             self.sockets[proxy] = socks.socksocket(
                 socket.AF_INET, socket.SOCK_DGRAM)
@@ -160,7 +161,7 @@ class Scanner(object):
                             else:
                                 s.connect((ip, port))
                                 s.send(bytes(packet))
-                            s.recv(4096)
+                            s.recv(65565)
                             scan_data["{}:{}".format(ip, port)] = \
                                 "Open"
                             s.close()
@@ -172,9 +173,6 @@ class Scanner(object):
                                     "Open|Filtered"
                             s.close()
                         except socket.error:
-                            # if "{}:{}".format(ip, port) not in scan_data:
-                            #     scan_data["{}:{}".format(ip, port)] = \
-                            #         "Closed"
                             s.close()
 
         def sniff_icmp():

@@ -12,7 +12,8 @@ def main():
             nargs="+", default=[19], help="List of target ports")
         parser.add_argument("-p", "--proxy", dest="proxies",
             nargs="+", default=None, type=str,
-            help="List of proxies which will be taken at random")
+            help=("List of SOCKS5 proxies which will be taken at random.\n"
+                  "Example: 99.99.99.99:1080"))
         parser.add_argument("-t", "--timeout", dest="timeout",
             type=int, default=1,
             help="How long to wait for reply at UDP request from target host")
