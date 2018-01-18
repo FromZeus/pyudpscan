@@ -10,11 +10,11 @@ from scapy.all import IP, UDP, struct
 
 class ICMP(ctypes.Structure):
     _fields_ = [
-        ('type', ctypes.c_ubyte),
-        ('code', ctypes.c_ubyte),
-        ('checksum', ctypes.c_ushort),
-        ('unused', ctypes.c_ushort),
-        ('next_hop_mtu', ctypes.c_ushort)
+        ("type", ctypes.c_ubyte),
+        ("code", ctypes.c_ubyte),
+        ("checksum", ctypes.c_ushort),
+        ("unused", ctypes.c_ushort),
+        ("next_hop_mtu", ctypes.c_ushort)
     ]
 
     def __new__(self, socket_buffer):
@@ -89,8 +89,8 @@ class Scanner(object):
 
         return segments
 
-    def break_up_ranges(self, segments):
-        """Break up IP ranges
+    def break_up_ip_ranges(self, segments):
+        """Breaks up IP ranges
 
         Example:
         For ["192", "168", "0-1", "0"]
@@ -114,7 +114,7 @@ class Scanner(object):
         if "-" in segments[idx]:
             start, end = segments[idx].split("-")
             for el in xrange(int(start), int(end) + 1):
-                tails.extend(self.break_up_ranges(
+                tails.extend(self.break_up_ip_ranges(
                     [str(el)] + segments[idx+1:]))
             for el in tails:
                 subnets.append(head + el)
@@ -129,13 +129,28 @@ class Scanner(object):
 
         segments = self.segmentation(subnet)
         if "/" in subnet:
-            subnets = self.break_up_ranges(segments[:-1])
+            subnets = self.break_up_ip_ranges(segments[:-1])
             for idx in xrange(len(subnets)):
                 subnets[idx] = subnets[idx] + "/" + segments[-1]
         else:
-            subnets = self.break_up_ranges(segments)
+            subnets = self.break_up_ip_ranges(segments)
 
         return subnets
+
+    def break_up_port_range(self, port_range):
+        """Breaks up port ranges
+
+        @param port_range: Port range to parse
+        @type port_range: `str`
+        """
+
+        ports = []
+
+        start, end = port_range.split("-")
+        for idx in xrange(int(start), int(end) + 1):
+            ports.append(idx)
+
+        return ports
 
     def scan(self):
         """Scan hosts for ports status"""
@@ -148,7 +163,7 @@ class Scanner(object):
 
             for net_ip in IPNetwork(subnet):
                 ip = net_ip.format()
-                for port in self.ports:
+                for port in ports:
                     for i in xrange(self.recheck + 1):
                         proxy, s = random.choice(self.sockets.items())
                         packet = IP(dst=ip)/UDP(dport=port)/("")
@@ -211,6 +226,13 @@ class Scanner(object):
         subnets = []
         for host in self.hosts:
             subnets.extend(self.parse_subnet(host))
+
+        ports = []
+        for port in self.ports:
+            if "-" in port:
+                ports.extend(self.break_up_port_range(port))
+            else:
+                ports.append(int(port))
 
         sniff_thread = threading.Thread(target=sniff_icmp)
         sniff_thread.daemon = True

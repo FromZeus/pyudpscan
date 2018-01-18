@@ -32,7 +32,7 @@ Also checkout list of `arguments`_
 arguments
 ^^^^^^^^^
 * ``--hosts`` - List of target hosts/subnets/ranges separated by space
-* ``--ports`` - List of target ports separated by space
+* ``--ports`` - List of target ports/ranges separated by space
 * ``-p, --proxy`` - List of SOCKS5 proxies which will be taken at random for every request
 * ``-t, --timeout`` - How long to wait for reply at UDP request from target host
 * ``-r, --recheck`` - Number of recheck for every port
