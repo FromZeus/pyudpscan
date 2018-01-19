@@ -189,6 +189,7 @@ class Scanner(object):
                             self._init_socket(proxy)
                             scan_data["current_ip"] = ip
                             scan_data["current_port"] = port
+                            scan_data.setdefault(ip, {})
                             if proxy == "default":
                                 sys.stdout = devnull
 
@@ -206,18 +207,14 @@ class Scanner(object):
                                 rep, non_rep = sr(pack,
                                     timeout=self.timeout, verbose=False)
                                 if len(rep) == 0:
-                                    scan_data["{}:{}".format(
-                                        ip, port)] = "Open|Filtered"
+                                    scan_data[ip][port] = "Open|Filtered"
                                 elif rep[0][1].proto == 1:
                                     if rep[0][1].code == 3:
-                                        scan_data["{}:{}".format(
-                                            ip, port)] = "Closed"
+                                        scan_data[ip][port] = "Closed"
                                     else:
-                                        scan_data["{}:{}".format(
-                                            ip, port)] = "Filtered"
+                                        scan_data[ip][port] = "Filtered"
                                 elif rep[0][1].proto == 17:
-                                    scan_data["{}:{}".format(
-                                        ip, port)] = "Open"
+                                    scan_data[ip][port] = "Open"
 
                                 for d in xrange(decoy_pause, len(decoys)):
                                     del decoys[d]["UDP"].chksum
@@ -229,13 +226,12 @@ class Scanner(object):
                                 s.connect((ip, port))
                                 s.send(bytes(packet))
                                 s.recv(65565)
-                                scan_data["{}:{}".format(ip, port)] = \
-                                    "Open"
+                                scan_data[ip][port] = "Open"
                                 s.close()
                         except socket.timeout:
-                            if "{}:{}".format(ip, port) not in scan_data:
-                                scan_data["{}:{}".format(ip, port)] = \
-                                    "Open|Filtered"
+                            if ip not in scan_data or \
+                                    port not in scan_data[ip]:
+                                scan_data[ip][port] = "Open|Filtered"
                             s.close()
                         except socket.error:
                             s.close()
@@ -266,12 +262,13 @@ class Scanner(object):
                     src_addr in [el.split(":")[0] for el in self.proxies] or \
                     self.proxies is None and any(IPAddress(src_addr)
                         in IPNetwork(subnet) for subnet in subnets):
+                    scan_data.setdefault(scan_data["current_ip"], {})
                     if icmp_header.code == 3 and icmp_header.type == 3:
-                        scan_data["{}:{}".format(scan_data["current_ip"],
-                            scan_data["current_port"])] = "Closed"
+                        scan_data[scan_data["current_ip"]][
+                            scan_data["current_port"]] = "Closed"
                     else:
-                        scan_data["{}:{}".format(scan_data["current_ip"],
-                            scan_data["current_port"])] = "Filtered"
+                        scan_data[scan_data["current_ip"]][
+                            scan_data["current_port"]] = "Filtered"
 
         subnets = []
         for host in self.hosts:

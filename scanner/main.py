@@ -36,11 +36,13 @@ def main():
         s = Scanner(args.proxies, args.decoys, args.hosts, args.ports,
             args.timeout, args.recheck, args.src_int_address)
         result = s.scan()
-        sorted_keys = sorted(result.keys())
+        sorted_ips = sorted(result.keys())
         print("\n")
-        for k in sorted_keys:
-            if k not in ["current_ip", "current_port"]:
-                print("{}\t{}".format(k, result[k]))
+        for ip in sorted_ips:
+            if ip not in ["current_ip", "current_port"]:
+                sorted_ports = sorted(result[ip].keys())
+                for port in sorted_ports:
+                    print("{}:{}\t{}".format(ip, port, result[ip][port]))
 
     except KeyboardInterrupt:
         print('\nThe process was interrupted by the user')
