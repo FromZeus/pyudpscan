@@ -1,11 +1,17 @@
 import ctypes
+import os
 import random
 import socket
+import sys
 import threading
 
 from netaddr import IPNetwork, IPAddress
 import socks
-from scapy.all import IP, UDP, struct
+from scapy.all import IP, UDP, struct, send, sr
+
+
+devnull = open(os.devnull, 'w')
+stdout = sys.stdout
 
 
 class ICMP(ctypes.Structure):
@@ -25,9 +31,10 @@ class ICMP(ctypes.Structure):
 
 
 class Scanner(object):
-    def __init__(self, proxies=None, hosts=["127.0.0.1"], ports=[19],
-                 timeout=1, recheck=0, src_int_address=None):
+    def __init__(self, proxies=None, decoys=None, hosts=["127.0.0.1"],
+                 ports=[19], timeout=1, recheck=0, src_int_address=None):
         self.proxies = proxies
+        self.decoys = decoys
         self.hosts = hosts
         self.ports = ports
         self.timeout = timeout
@@ -166,24 +173,67 @@ class Scanner(object):
                 for port in ports:
                     for i in xrange(self.recheck + 1):
                         proxy, s = random.choice(self.sockets.items())
-                        packet = IP(dst=ip)/UDP(dport=port)/("")
+                        sport = random.randint(1000, 65535)
+                        packet = IP(dst=ip)/UDP(dport=port,sport=sport)/("")
+                        decoys = []
+
+                        # Decoys evaluating
+                        if self.decoys is not None:
+                            for decoy in self.decoys:
+                                sport = random.randint(1000, 65535)
+                                decoys.append(IP(dst=ip,src=decoy)/
+                                              UDP(dport=port,sport=sport)/
+                                              (""))
+
                         try:
                             self._init_socket(proxy)
                             scan_data["current_ip"] = ip
                             scan_data["current_port"] = port
                             if proxy == "default":
-                                s.sendto(bytes(packet), (ip, port))
+                                sys.stdout = devnull
+
+                                decoy_pause = random.randint(0, len(decoys))
+                                random.shuffle(decoys)
+
+                                for d in xrange(decoy_pause):
+                                    del decoys[d]["UDP"].chksum
+                                    pack = IP(str(decoys[d]))
+                                    # s.sendto(bytes(pack), (ip, port))
+                                    send(pack, verbose=False)
+
+                                del packet.chksum
+                                pack = IP(str(packet))
+                                rep, non_rep = sr(pack,
+                                    timeout=self.timeout, verbose=False)
+                                if len(rep) == 0:
+                                    scan_data["{}:{}".format(
+                                        ip, port)] = "Open|Filtered"
+                                elif rep[0][1].proto == 1:
+                                    if rep[0][1].code == 3:
+                                        scan_data["{}:{}".format(
+                                            ip, port)] = "Closed"
+                                    else:
+                                        scan_data["{}:{}".format(
+                                            ip, port)] = "Filtered"
+                                elif rep[0][1].proto == 17:
+                                    scan_data["{}:{}".format(
+                                        ip, port)] = "Open"
+
+                                for d in xrange(decoy_pause, len(decoys)):
+                                    del decoys[d]["UDP"].chksum
+                                    pack = IP(str(decoys[d]))
+                                    send(pack)
+
+                                sys.stdout = stdout
                             else:
                                 s.connect((ip, port))
                                 s.send(bytes(packet))
-                            s.recv(65565)
-                            scan_data["{}:{}".format(ip, port)] = \
-                                "Open"
-                            s.close()
+                                s.recv(65565)
+                                scan_data["{}:{}".format(ip, port)] = \
+                                    "Open"
+                                s.close()
                         except socket.timeout:
-                            if "{}:{}".format(ip, port) not in scan_data or \
-                                scan_data["{}:{}".format(ip, port)] == \
-                                    "Closed":
+                            if "{}:{}".format(ip, port) not in scan_data:
                                 scan_data["{}:{}".format(ip, port)] = \
                                     "Open|Filtered"
                             s.close()
