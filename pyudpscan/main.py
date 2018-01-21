@@ -44,7 +44,7 @@ def main():
 
         min_len = 10
         for ip in sorted_ips:
-            if ip not in ["current_ip", "current_port"]:
+            if ip not in [el.split(":")[0] for el in args.proxies]:
                 sorted_ports = sorted(result[ip].keys())
                 for port in sorted_ports:
                     address = "{}:{}".format(ip, port)
@@ -52,11 +52,12 @@ def main():
                         tn = 2
                     else:
                         tn = 1
-                    print(address + "\t" * tn + result[ip][port])
+                    print(address + "\t" * tn + str(result[ip][port]))
 
         m, s = divmod(end - start, 60)
         h, m = divmod(m, 60)
-        print("\nElapsed time: {} hours {} minutes {} seconds\n".format(h, m, s))
+        print("\nElapsed time: {} hours {} minutes {} seconds\n".format(
+            h, m, s))
 
     except KeyboardInterrupt:
         print('\nThe process was interrupted by the user')

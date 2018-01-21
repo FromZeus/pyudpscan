@@ -5,7 +5,7 @@ import socket
 import sys
 import threading
 
-from netaddr import IPNetwork, IPAddress
+from netaddr import IPNetwork
 import socks
 from scapy.all import IP, UDP, struct, send, sr
 
@@ -56,11 +56,6 @@ class Scanner(object):
                 self.sockets[proxy].set_proxy(socks.SOCKS5, ip, port)
                 self.sockets[proxy].setblocking(0)
                 self.sockets[proxy].settimeout(self.timeout)
-        else:
-            self.sockets["default"] = socket.socket(
-                socket.AF_INET, socket.SOCK_DGRAM)
-            self.sockets["default"].setblocking(0)
-            self.sockets["default"].settimeout(self.timeout)
 
     def _init_socket(self, proxy):
         """Initiate socket throgh proxy
@@ -69,16 +64,11 @@ class Scanner(object):
         @type proxy: `str`
         """
 
-        if proxy != "default":
-            self.sockets[proxy] = socks.socksocket(
-                socket.AF_INET, socket.SOCK_DGRAM)
-            ip, port = proxy.split(":")
-            port = int(port)
-            self.sockets[proxy].set_proxy(socks.SOCKS5, ip, port)
-        else:
-            self.sockets[proxy] = socket.socket(
-                socket.AF_INET, socket.SOCK_DGRAM)
-
+        self.sockets[proxy] = socks.socksocket(
+            socket.AF_INET, socket.SOCK_DGRAM)
+        ip, port = proxy.split(":")
+        port = int(port)
+        self.sockets[proxy].set_proxy(socks.SOCKS5, ip, port)
         self.sockets[proxy].setblocking(0)
         self.sockets[proxy].settimeout(self.timeout)
 
@@ -165,14 +155,50 @@ class Scanner(object):
         scan_data = {}
         threads = []
 
-        def send_requests(ip):
-            """Send requests to hosts in subnet"""
+        def send_requests_proxy(ip, proxy, s, dproxies):
+            """Send requests to hosts in subnet through proxy"""
 
+            proxy_ip, _ = proxy.split(":")
+            scan_data.setdefault(proxy_ip, {})
+            scan_data.setdefault(ip, {})
             for port in ports:
                 for i in xrange(self.recheck + 1):
-                    proxy, s = random.choice(self.sockets.items())
+                    if port in scan_data[ip] and scan_data[ip][port] in \
+                            ["Open", "Closed", "Filtered"]:
+                        break
+                    packet = IP(dst=ip.format())/UDP(dport=port)/("")
+
+                    try:
+                        self._init_socket(proxy)
+                        scan_data[proxy_ip]["current_ip"] = ip
+                        scan_data[proxy_ip]["current_port"] = port
+
+                        s.connect((ip.format(), port))
+                        s.send(bytes(packet))
+                        s.recv(65565)
+                        scan_data[ip][port] = "Open"
+                    except (socket.timeout, socket.error, Exception):
+                        if ip not in scan_data or \
+                                port not in scan_data[ip]:
+                            scan_data[ip][port] = "Open|Filtered"
+
+                    s.close()
+
+            dproxies[proxy] = True
+
+        def send_requests(ip):
+            """Send requests to hosts in subnet directly"""
+
+            scan_data.setdefault(ip, {})
+            for port in ports:
+                for i in xrange(self.recheck + 1):
+                    if port in scan_data[ip] and scan_data[ip][port] in \
+                            ["Open", "Closed", "Filtered"]:
+                        break
+
                     sport = random.randint(1000, 65535)
-                    packet = IP(dst=ip.format())/UDP(dport=port,sport=sport)/("")
+                    packet = IP(dst=ip.format())/UDP(
+                        dport=port,sport=sport)/("")
                     decoys = []
 
                     # Decoys evaluating
@@ -184,58 +210,40 @@ class Scanner(object):
                                           (""))
 
                     try:
-                        self._init_socket(proxy)
-                        scan_data["current_ip"] = ip
-                        scan_data["current_port"] = port
-                        scan_data.setdefault(ip, {})
-                        if proxy == "default":
-                            sys.stdout = devnull
+                        sys.stdout = devnull
 
-                            decoy_pause = random.randint(0, len(decoys))
-                            random.shuffle(decoys)
+                        decoy_pause = random.randint(0, len(decoys))
+                        random.shuffle(decoys)
 
-                            for d in xrange(decoy_pause):
-                                del decoys[d]["UDP"].chksum
-                                pack = IP(str(decoys[d]))
-                                # s.sendto(bytes(pack), (ip, port))
-                                send(pack, verbose=False)
+                        for d in xrange(decoy_pause):
+                            del decoys[d]["UDP"].chksum
+                            pack = IP(str(decoys[d]))
+                            send(pack, verbose=False)
 
-                            del packet.chksum
-                            pack = IP(str(packet))
-                            rep, non_rep = sr(pack,
-                                timeout=self.timeout, verbose=False)
-                            if len(rep) == 0:
+                        del packet.chksum
+                        pack = IP(str(packet))
+                        rep, non_rep = sr(pack,
+                            timeout=self.timeout, verbose=False)
+                        if len(rep) == 0:
                                 scan_data[ip][port] = "Open|Filtered"
-                            elif rep[0][1].proto == 1:
-                                if rep[0][1].code == 3:
-                                    scan_data[ip][port] = "Closed"
-                                else:
-                                    scan_data[ip][port] = "Filtered"
-                            elif rep[0][1].proto == 17:
-                                scan_data[ip][port] = "Open"
-
-                            for d in xrange(decoy_pause, len(decoys)):
-                                del decoys[d]["UDP"].chksum
-                                pack = IP(str(decoys[d]))
-                                send(pack)
-
-                            sys.stdout = stdout
-                        else:
-                            s.connect((ip.format(), port))
-                            s.send(bytes(packet))
-                            s.recv(65565)
+                        elif rep[0][1].proto == 1:
+                            if rep[0][1].code == 3:
+                                scan_data[ip][port] = "Closed"
+                            else:
+                                scan_data[ip][port] = "Filtered"
+                        elif rep[0][1].proto == 17:
                             scan_data[ip][port] = "Open"
-                            s.close()
-                    except socket.timeout:
-                        if ip not in scan_data or \
-                                port not in scan_data[ip]:
-                            scan_data[ip][port] = "Open|Filtered"
-                        s.close()
-                    except socket.error:
-                        if ip not in scan_data or \
-                                port not in scan_data[ip]:
-                            scan_data[ip][port] = "Filtered"
-                        s.close()
+
+                        for d in xrange(decoy_pause, len(decoys)):
+                            del decoys[d]["UDP"].chksum
+                            pack = IP(str(decoys[d]))
+                            send(pack)
+
+                        sys.stdout = stdout
+                    except Exception as ex:
+                        sys.stdout = stdout
+                        print("{}:{} Something went wrong\n{}".format(
+                            ip, port, ex))
 
         def sniff_icmp():
             """Sniff for ICMP responses"""
@@ -260,16 +268,24 @@ class Scanner(object):
                 icmp_header = ICMP(buf)
 
                 if self.proxies is not None and \
-                    src_addr in [el.split(":")[0] for el in self.proxies] or \
-                    self.proxies is None and any(IPAddress(src_addr)
-                        in IPNetwork(subnet) for subnet in subnets):
-                    scan_data.setdefault(scan_data["current_ip"], {})
+                        src_addr in [el.split(":")[0] for el in self.proxies]:
                     if icmp_header.code == 3 and icmp_header.type == 3:
-                        scan_data[scan_data["current_ip"]][
-                            scan_data["current_port"]] = "Closed"
+                        scan_data[scan_data[src_addr]["current_ip"]][
+                            scan_data[src_addr]["current_port"]] = "Closed"
                     else:
-                        scan_data[scan_data["current_ip"]][
-                            scan_data["current_port"]] = "Filtered"
+                        scan_data[scan_data[src_addr]["current_ip"]][
+                            scan_data[src_addr]["current_port"]] = "Filtered"
+
+        def get_proxy(dproxies):
+            available_proxies = []
+            while len(available_proxies) == 0:
+                available_proxies = [k for k, v in dproxies.iteritems() if v]
+
+            proxy = random.choice(available_proxies)
+            s = self.sockets[proxy]
+            dproxies[proxy] = False
+
+            return (proxy, s)
 
         subnets = []
         for host in self.hosts:
@@ -287,6 +303,8 @@ class Scanner(object):
             sniff_thread.daemon = True
             sniff_thread.start()
 
+        dproxies = dict([(el, True) for el in self.sockets.keys()])
+
         for subnet in subnets:
             for net_ip in IPNetwork(subnet):
                 if self.proxies is None:
@@ -294,7 +312,11 @@ class Scanner(object):
                     t.start()
                     threads.append(t)
                 else:
-                    send_requests(net_ip)
+                    proxy, s = get_proxy(dproxies)
+                    t = threading.Thread(target=send_requests_proxy,
+                        args=(net_ip, proxy, s, dproxies,))
+                    t.start()
+                    threads.append(t)
 
         for thread in threads:
             thread.join()
