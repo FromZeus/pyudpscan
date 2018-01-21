@@ -44,7 +44,8 @@ def main():
 
         min_len = 10
         for ip in sorted_ips:
-            if ip not in [el.split(":")[0] for el in args.proxies]:
+            if args.proxies is None or \
+                    ip not in [el.split(":")[0] for el in args.proxies]:
                 sorted_ports = sorted(result[ip].keys())
                 for port in sorted_ports:
                     address = "{}:{}".format(ip, port)
