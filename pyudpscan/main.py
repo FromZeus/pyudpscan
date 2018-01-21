@@ -1,4 +1,5 @@
 import argparse
+import time
 
 from scanner import Scanner
 
@@ -33,16 +34,29 @@ def main():
                   "Example: 192.168.0.15"))
         args = parser.parse_args()
 
+        start = time.time()
         s = Scanner(args.proxies, args.decoys, args.hosts, args.ports,
             args.timeout, args.recheck, args.src_int_address)
         result = s.scan()
+        end = time.time()
         sorted_ips = sorted(result.keys())
         print("\n")
+
+        min_len = 10
         for ip in sorted_ips:
             if ip not in ["current_ip", "current_port"]:
                 sorted_ports = sorted(result[ip].keys())
                 for port in sorted_ports:
-                    print("{}:{}\t{}".format(ip, port, result[ip][port]))
+                    address = "{}:{}".format(ip, port)
+                    if len(address) / 8 <= 1:
+                        tn = 2
+                    else:
+                        tn = 1
+                    print(address + "\t" * tn + result[ip][port])
+
+        m, s = divmod(end - start, 60)
+        h, m = divmod(m, 60)
+        print("\nElapsed time: {} hours {} minutes {} seconds\n".format(h, m, s))
 
     except KeyboardInterrupt:
         print('\nThe process was interrupted by the user')
