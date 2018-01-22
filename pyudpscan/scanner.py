@@ -1,4 +1,5 @@
 import ctypes
+import netifaces
 import os
 import random
 import socket
@@ -14,7 +15,7 @@ devnull = open(os.devnull, 'w')
 stdout = sys.stdout
 payload = {
     7: "\x0D\x0A\x0D\x0A",
-    19: "\x63\x68\x61\x72\x67\x65\x6e\x0a",
+    19: "\x63\x68\x61\x72\x67\x65\x6e",
     53: "\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00",
     80: "\r12345678Q999\x00",
     111: ("\x72\xFE\x1D\x13\x00\x00\x00\x00\x00\x00\x00\x02\x00\x01\x86\xA0"
@@ -110,14 +111,16 @@ class ICMP(ctypes.Structure):
 
 class Scanner(object):
     def __init__(self, proxies=None, decoys=None, hosts=["127.0.0.1"],
-                 ports=[19], timeout=1, recheck=0, src_int_address=None):
+                 ports=[19], timeout=1, recheck=0, interface=None):
         self.proxies = proxies
         self.decoys = decoys
         self.hosts = hosts
         self.ports = ports
         self.timeout = timeout
         self.recheck = recheck
-        self.src_int_address = src_int_address
+        self.interface = interface
+        self.int_address = netifaces.ifaddresses(
+            self.interface)[netifaces.AF_INET][0]["addr"]
         self.sockets = {}
         self._init_sockets()
 
@@ -126,14 +129,7 @@ class Scanner(object):
 
         if self.proxies is not None:
             for proxy in self.proxies:
-                ip, port = proxy.split(":")
-                port = int(port)
-
-                self.sockets[proxy] = socks.socksocket(
-                    socket.AF_INET, socket.SOCK_DGRAM)
-                self.sockets[proxy].set_proxy(socks.SOCKS5, ip, port)
-                self.sockets[proxy].setblocking(0)
-                self.sockets[proxy].settimeout(self.timeout)
+                self._init_socket(proxy)
 
     def _init_socket(self, proxy):
         """Initiate socket throgh proxy
@@ -142,6 +138,7 @@ class Scanner(object):
         @type proxy: `str`
         """
 
+        sp = random.randint(1000, 65535)
         self.sockets[proxy] = socks.socksocket(
             socket.AF_INET, socket.SOCK_DGRAM)
         ip, port = proxy.split(":")
@@ -149,6 +146,7 @@ class Scanner(object):
         self.sockets[proxy].set_proxy(socks.SOCKS5, ip, port)
         self.sockets[proxy].setblocking(0)
         self.sockets[proxy].settimeout(self.timeout)
+        self.sockets[proxy].bind((self.int_address, sp))
 
     def segmentation(self, subnet):
         """Split IP into segments
@@ -166,6 +164,9 @@ class Scanner(object):
 
     def break_up_ip_ranges(self, segments):
         """Breaks up IP ranges
+
+        @param segments: List of IP segments
+        @type segments: [`str`]
 
         Example:
         For ["192", "168", "0-1", "0"]
@@ -200,7 +201,11 @@ class Scanner(object):
         return subnets
 
     def parse_subnet(self, subnet):
-        """Parse subnet into subnets"""
+        """Parse subnet into subnets
+
+        @param subnet: Subnet
+        @type subnet: `str`
+        """
 
         segments = self.segmentation(subnet)
         if "/" in subnet:
@@ -233,8 +238,16 @@ class Scanner(object):
         scan_data = {}
         threads = []
 
-        def send_requests_proxy(ip, proxy, s, dproxies):
-            """Send requests to hosts in subnet through proxy"""
+        def send_requests_proxy(ip, proxy, dproxies):
+            """Send requests to hosts in subnet through proxy
+
+            @param ip: Target IP address
+            @type ip: `str`
+            @param proxy: Proxy address in format ip:port
+            @type proxy: `str`
+            @param dproxies: Dictionary with proxies and their status
+            @type dproxies: dict(`str`: `bool`)
+            """
 
             proxy_ip, _ = proxy.split(":")
             scan_data.setdefault(proxy_ip, {})
@@ -251,6 +264,7 @@ class Scanner(object):
 
                     try:
                         self._init_socket(proxy)
+                        s = self.sockets[proxy]
                         scan_data[proxy_ip]["current_ip"] = ip
                         scan_data[proxy_ip]["current_port"] = port
 
@@ -258,7 +272,7 @@ class Scanner(object):
                         s.send(bytes(packet))
                         s.recv(65565)
                         scan_data[ip][port] = "Open"
-                    except (socket.timeout, socket.error, Exception):
+                    except (socket.timeout, socket.error, Exception) as ex:
                         if ip not in scan_data or \
                                 port not in scan_data[ip]:
                             scan_data[ip][port] = "Open|Filtered"
@@ -268,7 +282,11 @@ class Scanner(object):
             dproxies[proxy] = True
 
         def send_requests(ip):
-            """Send requests to hosts in subnet directly"""
+            """Send requests to hosts in subnet directly
+
+            @param ip: Target IP address
+            @type ip: `str`
+            """
 
             scan_data.setdefault(ip, {})
             for port in ports:
@@ -302,12 +320,12 @@ class Scanner(object):
                         for d in xrange(decoy_pause):
                             del decoys[d]["UDP"].chksum
                             pack = IP(str(decoys[d]))
-                            send(pack, verbose=False)
+                            send(pack, iface=self.interface, verbose=False)
 
                         del packet.chksum
                         pack = IP(str(packet))
-                        rep, non_rep = sr(pack,
-                            timeout=self.timeout, verbose=False)
+                        rep, non_rep = sr(pack, timeout=self.timeout,
+                            iface=self.interface, verbose=False)
                         if len(rep) == 0:
                                 scan_data[ip][port] = "Open|Filtered"
                         elif rep[0][1].proto == 1:
@@ -321,7 +339,7 @@ class Scanner(object):
                         for d in xrange(decoy_pause, len(decoys)):
                             del decoys[d]["UDP"].chksum
                             pack = IP(str(decoys[d]))
-                            send(pack)
+                            send(pack, iface=self.interface, verbose=False)
 
                         sys.stdout = stdout
                     except Exception as ex:
@@ -334,7 +352,7 @@ class Scanner(object):
 
             sniffer = socket.socket(socket.AF_INET, socket.SOCK_RAW,
                 socket.IPPROTO_ICMP)
-            sniffer.bind((self.src_int_address, 0))
+            sniffer.bind((self.int_address, 0))
             sniffer.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
 
             while True:
@@ -361,6 +379,12 @@ class Scanner(object):
                             scan_data[src_addr]["current_port"]] = "Filtered"
 
         def get_proxy(dproxies):
+            """Get random proxy
+
+            @param dproxies: Dictionary with proxies and their status
+            @type dproxies: dict(`str`: `bool`)
+            """
+
             available_proxies = []
             while len(available_proxies) == 0:
                 available_proxies = [k for k, v in dproxies.iteritems() if v]
@@ -396,9 +420,9 @@ class Scanner(object):
                     t.start()
                     threads.append(t)
                 else:
-                    proxy, s = get_proxy(dproxies)
+                    proxy, _ = get_proxy(dproxies)
                     t = threading.Thread(target=send_requests_proxy,
-                        args=(net_ip, proxy, s, dproxies,))
+                        args=(net_ip, proxy, dproxies,))
                     t.start()
                     threads.append(t)
 

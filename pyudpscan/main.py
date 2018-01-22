@@ -28,7 +28,7 @@ def main():
             nargs="+", default=None,
             help=("List of decoys to use.\n"
                   "Example: 91.91.91.91 19.19.19.19"))
-        parser.add_argument("-i", "--src-int-address", dest="src_int_address",
+        parser.add_argument("-i", "--interface", dest="interface",
             type=str, required=True,
             help=("Address of local source interface to listen on.\n"
                   "Example: 192.168.0.15"))
@@ -36,7 +36,7 @@ def main():
 
         start = time.time()
         s = Scanner(args.proxies, args.decoys, args.hosts, args.ports,
-            args.timeout, args.recheck, args.src_int_address)
+            args.timeout, args.recheck, args.interface)
         result = s.scan()
         end = time.time()
         sorted_ips = sorted(result.keys())
