@@ -3,3 +3,4 @@ setuptools>=17.1
 netaddr>=0.7.19
 PySocks>=1.6.8
 scapy>=2.2.0
+netifaces>=0.10.6
