@@ -30,8 +30,8 @@ def main():
                   "Example: 91.91.91.91 19.19.19.19"))
         parser.add_argument("-i", "--interface", dest="interface",
             type=str, required=True,
-            help=("Address of local source interface to listen on.\n"
-                  "Example: 192.168.0.15"))
+            help=("Name of local source interface to listen on.\n"
+                  "Example: eth0"))
         args = parser.parse_args()
 
         start = time.time()
