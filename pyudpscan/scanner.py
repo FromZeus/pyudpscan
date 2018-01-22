@@ -8,7 +8,7 @@ import threading
 
 from netaddr import IPNetwork
 import socks
-from scapy.all import IP, UDP, struct, send, sr
+from scapy.all import IP, UDP, struct, sendp, srp
 
 
 devnull = open(os.devnull, 'w')
@@ -320,11 +320,11 @@ class Scanner(object):
                         for d in xrange(decoy_pause):
                             del decoys[d]["UDP"].chksum
                             pack = IP(str(decoys[d]))
-                            send(pack, iface=self.interface, verbose=False)
+                            sendp(pack, iface=self.interface, verbose=False)
 
                         del packet.chksum
                         pack = IP(str(packet))
-                        rep, non_rep = sr(pack, timeout=self.timeout,
+                        rep, non_rep = srp(pack, timeout=self.timeout,
                             iface=self.interface, verbose=False)
                         if len(rep) == 0:
                                 scan_data[ip][port] = "Open|Filtered"
@@ -339,7 +339,7 @@ class Scanner(object):
                         for d in xrange(decoy_pause, len(decoys)):
                             del decoys[d]["UDP"].chksum
                             pack = IP(str(decoys[d]))
-                            send(pack, iface=self.interface, verbose=False)
+                            sendp(pack, iface=self.interface, verbose=False)
 
                         sys.stdout = stdout
                     except Exception as ex:
